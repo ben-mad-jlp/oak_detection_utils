@@ -1,0 +1,41 @@
+{
+  "config_version": "1.0",
+  "model": {
+    "metadata": {
+      "name": "qr_code_yolov8n",
+      "path": "/home/jlp/claude_share/qr_code_model_openvino_2022.1_6shave.blob"
+    },
+    "inputs": [
+      {
+        "name": "input",
+        "dtype": "float16",
+        "input_type": "image",
+        "shape": [1, 3, 640, 640],
+        "layout": "NCHW",
+        "preprocessing": {
+          "mean": [0, 0, 0],
+          "scale": [255, 255, 255],
+          "reverse_channels": true
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "name": "output",
+        "dtype": "float16"
+      }
+    ],
+    "heads": [
+      {
+        "parser": "YOLO",
+        "metadata": {
+          "subtype": "yolov8",
+          "n_classes": 1,
+          "classes": ["center"],
+          "iou_threshold": 0.5,
+          "conf_threshold": 0.3
+        }
+      }
+    ]
+  }
+}

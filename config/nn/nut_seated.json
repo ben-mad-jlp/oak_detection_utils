@@ -1,0 +1,25 @@
+{
+  "model": {
+    "zoo": "path",
+    "model_name": "/home/jlp/Projects/code/ros_ws/src/nutting_station_detection/cfg/nut_seated_openvino_2021.3_2shave.blob"
+  },
+  "nn_config": {
+    "output_format": "detection",
+    "NN_family": "YOLO",
+    "input_size": "416x416",
+    "NN_specific_metadata": {
+      "classes": 3,
+      "coordinates": 4,
+      "anchors": [24, 152, 75, 105, 70, 183, 138, 118, 197, 143, 239, 217],
+      "anchor_masks": {
+        "side26": [0, 1, 2],
+        "side13": [3, 4, 5]
+      },
+      "iou_threshold": 0.2,
+      "confidence_threshold": 0.1
+    }
+  },
+  "mappings": {
+    "labels": ["no_nut", "nut_not_seated", "nut_seated"]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "model": {
+    "zoo": "path",
+    "model_name": "/home/jlp/Projects/code/ros_ws/src/nutting_station_detection/cfg/studs_and_nuts_openvino_2021.3_6shave.blob"
+  },
+  "nn_config": {
+    "output_format": "detection",
+    "NN_family": "YOLO",
+    "input_size": "416x416",
+    "NN_specific_metadata": {
+      "classes": 2,
+      "coordinates": 4,
+      "anchors": [38, 55, 89, 84, 47, 207, 226, 83, 137, 193, 289, 228],
+      "anchor_masks": {
+        "side26": [0, 1, 2],
+        "side13": [3, 4, 5]
+      },
+      "iou_threshold": 0.2,
+      "confidence_threshold": 0.5
+    }
+  },
+  "mappings": {
+    "labels": ["stud", "nut"]
+  }
+}

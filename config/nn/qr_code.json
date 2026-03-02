@@ -1,0 +1,23 @@
+{
+  "model": {
+    "zoo": "path",
+    "model_name": "/home/jlp/claude_share/qr_code_model_openvino_2022.1_6shave.blob"
+  },
+  "nn_config": {
+    "output_format": "detection",
+    "NN_family": "YOLO",
+    "input_size": "640x640",
+    "NN_specific_metadata": {
+      "classes": 1,
+      "coordinates": 4,
+      "anchors": [],
+      "anchor_masks": {},
+      "iou_threshold": 0.5,
+      "confidence_threshold": 0.3,
+      "yolo_version": "v8"
+    }
+  },
+  "mappings": {
+    "labels": ["center"]
+  }
+}

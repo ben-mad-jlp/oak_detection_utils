@@ -1,0 +1,21 @@
+/**:
+  ros__parameters:
+    camera:
+      i_enable_imu: false
+      i_enable_ir: false
+      i_nn_type: rgb
+      i_pipeline_type: RGBD
+      i_mx_id: ""
+    left:
+      i_disabled: true
+    right:
+      i_disabled: true
+    stereo:
+      i_disabled: true
+    nn:
+      i_nn_config_path: ""
+    rgb:
+      i_publish_topic: true
+      i_resolution: "1080P"
+      i_fps: 30.0
+      i_preview_size: 416
