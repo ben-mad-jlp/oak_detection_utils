@@ -14,6 +14,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(message_filters REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(OpenCV REQUIRED)
 
 # Detection Bridge Node
@@ -40,7 +41,20 @@ ament_target_dependencies(detection_overlay_node
 rclcpp_components_register_nodes(detection_overlay_node
   "oak_detection_utils::DetectionOverlayNode")
 
-install(TARGETS detection_bridge_node detection_overlay_node
+# Detection Capture Node
+add_library(detection_capture_node SHARED
+  src/detection_capture_node.cpp)
+target_include_directories(detection_capture_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(detection_capture_node ${OpenCV_LIBS})
+ament_target_dependencies(detection_capture_node
+  rclcpp rclcpp_components vision_msgs sensor_msgs std_msgs std_srvs
+  cv_bridge)
+rclcpp_components_register_nodes(detection_capture_node
+  "oak_detection_utils::DetectionCaptureNode")
+
+install(TARGETS detection_bridge_node detection_overlay_node detection_capture_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
