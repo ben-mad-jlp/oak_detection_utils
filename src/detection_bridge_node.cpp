@@ -1,5 +1,7 @@
 #include "oak_detection_utils/detection_bridge_node.hpp"
 
+#include <cmath>
+
 namespace oak_detection_utils {
 
 DetectionBridgeNode::DetectionBridgeNode(const rclcpp::NodeOptions & options)
@@ -7,9 +9,11 @@ DetectionBridgeNode::DetectionBridgeNode(const rclcpp::NodeOptions & options)
 {
   declare_parameter<std::vector<std::string>>("label_map", std::vector<std::string>{});
   declare_parameter<int>("input_size", 416);
+  declare_parameter<double>("confidence_threshold", 0.25);
 
   label_map_ = get_parameter("label_map").as_string_array();
   input_size_ = get_parameter("input_size").as_int();
+  confidence_threshold_ = get_parameter("confidence_threshold").as_double();
 
   sub_ = create_subscription<vision_msgs::msg::Detection2DArray>(
     "/oak/nn/detections", 10,
@@ -52,7 +56,17 @@ void DetectionBridgeNode::detection_callback(
     bb.ymax = std::min(bb.ymax, static_cast<int64_t>(input_size_));
 
     if (!det.results.empty()) {
-      bb.probability = det.results[0].hypothesis.score;
+      double raw_score = det.results[0].hypothesis.score;
+      // Apply sigmoid if score is outside [0, 1] (raw logits from parser)
+      double prob = (raw_score < 0.0 || raw_score > 1.0)
+        ? 1.0 / (1.0 + std::exp(-raw_score))
+        : raw_score;
+
+      if (prob < confidence_threshold_) {
+        continue;
+      }
+
+      bb.probability = prob;
       int class_id = std::atoi(det.results[0].hypothesis.class_id.c_str());
       if (class_id >= 0 && class_id < static_cast<int>(label_map_.size())) {
         bb.class_name = label_map_[class_id];

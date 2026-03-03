@@ -18,6 +18,7 @@ private:
 
   std::vector<std::string> label_map_;
   int input_size_;
+  double confidence_threshold_;
 };
 
 }  // namespace oak_detection_utils
