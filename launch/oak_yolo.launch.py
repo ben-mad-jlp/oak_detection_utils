@@ -18,6 +18,8 @@ def launch_setup(context, *args, **kwargs):
 
     nn_config_name = LaunchConfiguration("nn_config").perform(context)
     mx_id = LaunchConfiguration("mx_id").perform(context)
+    capture_rate = float(LaunchConfiguration("capture_rate").perform(context))
+    session_name = LaunchConfiguration("session_name").perform(context)
 
     nn_config_path = os.path.join(pkg_dir, "config", "nn", f"{nn_config_name}.json")
 
@@ -43,6 +45,9 @@ def launch_setup(context, *args, **kwargs):
         # Legacy v2 config format
         label_map = nn_json.get("mappings", {}).get("labels", [])
         nn_model_path = nn_json.get("model", {}).get("model_name", "")
+        # Resolve relative blob names from the blobs/ directory
+        if nn_model_path and not os.path.isabs(nn_model_path):
+            nn_model_path = os.path.join(pkg_dir, "config", "nn", "blobs", nn_model_path)
         input_size = 416
         input_size_str = nn_json.get("nn_config", {}).get("input_size", "416x416")
         if "x" in input_size_str:
@@ -79,7 +84,7 @@ def launch_setup(context, *args, **kwargs):
     with os.fdopen(params_fd, "w") as f:
         yaml.dump(camera_params, f, default_flow_style=False)
 
-    camera_name = "oak"
+    camera_name = LaunchConfiguration("name").perform(context)
 
     # Include the official depthai_ros_driver v3 launch
     driver_launch = IncludeLaunchDescription(
@@ -103,23 +108,48 @@ def launch_setup(context, *args, **kwargs):
             ComposableNode(
                 package="oak_detection_utils",
                 plugin="oak_detection_utils::DetectionBridgeNode",
-                name="oak_d",
+                name=f"{camera_name}_bridge",
                 parameters=[{
                     "label_map": label_map,
                     "input_size": input_size,
                 }],
+                remappings=[
+                    ("/oak/nn/detections", f"/{camera_name}/nn/detections"),
+                ],
             ),
             ComposableNode(
                 package="oak_detection_utils",
                 plugin="oak_detection_utils::DetectionOverlayNode",
                 name="detection_overlay",
-                namespace="oak_d",
+                namespace=f"{camera_name}_bridge",
                 parameters=[{
                     "label_map": label_map,
                     "input_size": input_size,
                     "publish_rate": 5.0,
                     "show_dead_zone": True,
                 }],
+                remappings=[
+                    ("/oak/rgb/image_raw", f"/{camera_name}/rgb/image_raw"),
+                    ("/oak/nn/detections", f"/{camera_name}/nn/detections"),
+                ],
+            ),
+            ComposableNode(
+                package="oak_detection_utils",
+                plugin="oak_detection_utils::DetectionCaptureNode",
+                name="capture",
+                namespace=f"{camera_name}_bridge",
+                parameters=[{
+                    "label_map": label_map,
+                    "camera_name": camera_name,
+                    "session_name": session_name,
+                    "enabled": True,
+                    "min_save_interval": capture_rate,
+                    "periodic_interval": capture_rate,
+                }],
+                remappings=[
+                    ("/oak/rgb/image_raw", f"/{camera_name}/rgb/image_raw"),
+                    ("/oak/nn/detections", f"/{camera_name}/nn/detections"),
+                ],
             ),
         ],
     )
@@ -130,6 +160,11 @@ def launch_setup(context, *args, **kwargs):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
+            "name",
+            default_value="oak",
+            description="Camera node name (used for topic namespace)",
+        ),
+        DeclareLaunchArgument(
             "nn_config",
             default_value="yolov8n-qr_code-640",
             description="NN config name (matches JSON filename in config/nn/; "
@@ -139,6 +174,16 @@ def generate_launch_description():
             "mx_id",
             default_value="",
             description="MyriadX device ID (empty for first available)",
+        ),
+        DeclareLaunchArgument(
+            "capture_rate",
+            default_value="30.0",
+            description="Minimum interval (seconds) between image captures",
+        ),
+        DeclareLaunchArgument(
+            "session_name",
+            default_value="default",
+            description="Capture session name (images saved to ~/capture/{session_name}/{camera}/)",
         ),
         OpaqueFunction(function=launch_setup),
     ])

@@ -1,7 +1,7 @@
 {
   "model": {
     "zoo": "path",
-    "model_name": "/home/jlp/Projects/code/ros_ws/src/nutting_station_detection/cfg/nut_seated_openvino_2021.3_2shave.blob"
+    "model_name": "nut_seated_openvino_2021.3_2shave.blob"
   },
   "nn_config": {
     "output_format": "detection",
