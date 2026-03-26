@@ -3,6 +3,10 @@ repositories:
     type: git
     url: https://github.com/ben-mad-jlp/depthai-ros.git
     version: kilted-local-nnarchive
+  depthai_vendor:
+    type: git
+    url: https://github.com/thebyohazard/depthai_vendor.git
+    version: master
   depthai_yolo_msgs:
     type: git
     url: https://github.com/ben-mad-jlp/depthai_yolo_msgs.git
