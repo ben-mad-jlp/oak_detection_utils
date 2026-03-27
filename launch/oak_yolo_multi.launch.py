@@ -22,11 +22,18 @@ CAMERA_IDS = [
 
 
 def launch_setup(context, *args, **kwargs):
-    pkg_dir = get_package_share_directory("oak_detection_utils")
     driver_dir = get_package_share_directory("depthai_ros_driver")
 
-    nn_config_name = LaunchConfiguration("nn_config").perform(context)
-    nn_config_path = os.path.join(pkg_dir, "config", "nn", f"{nn_config_name}.json")
+    nn_package = LaunchConfiguration("nn_package").perform(context)
+    nn_config = LaunchConfiguration("nn_config").perform(context)
+
+    if nn_package:
+        base_dir = get_package_share_directory(nn_package)
+        nn_config_path = os.path.join(base_dir, nn_config + ".json")
+        archive_path = os.path.join(base_dir, nn_config + ".tar.xz")
+    else:
+        nn_config_path = nn_config + ".json"
+        archive_path = os.path.splitext(nn_config)[0] + ".tar.xz"
 
     with open(nn_config_path) as f:
         nn_json = json.load(f)
@@ -38,7 +45,6 @@ def launch_setup(context, *args, **kwargs):
         inputs = model.get("inputs", [{}])
         shape = inputs[0].get("shape", [1, 3, 416, 416]) if inputs else [1, 3, 416, 416]
         input_size = shape[2]
-        archive_path = os.path.join(pkg_dir, "config", "nn", f"{nn_config_name}.tar.xz")
         nn_model_path = archive_path
     else:
         label_map = nn_json.get("mappings", {}).get("labels", [])
@@ -154,9 +160,13 @@ def launch_setup(context, *args, **kwargs):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
+            "nn_package",
+            default_value="",
+            description="Package containing the NN config files. If empty, nn_config is treated as an absolute path stem.",
+        ),
+        DeclareLaunchArgument(
             "nn_config",
-            default_value="yolov8n-nut-640",
-            description="NN config name (matches JSON filename in config/nn/)",
+            description="NN config path stem (no extension). Relative to nn_package share dir if nn_package is set, otherwise absolute.",
         ),
         OpaqueFunction(function=launch_setup),
     ])

@@ -1,7 +1,0 @@
-{
-    "config_version": "1.0",
-    "model": {
-        "inputs": [{"shape": [1, 3, 640, 640]}],
-        "heads": [{"parser": "YOLO", "metadata": {"subtype": "yolov8", "n_classes": 1, "classes": ["QR_CODE"]}}]
-    }
-}

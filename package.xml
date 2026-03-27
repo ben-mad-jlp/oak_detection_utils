@@ -20,6 +20,8 @@
   <depend>message_filters</depend>
   <depend>OpenCV</depend>
 
+  <exec_depend>depthai_ros_driver</exec_depend>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>
