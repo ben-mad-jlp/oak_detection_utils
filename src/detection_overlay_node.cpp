@@ -15,8 +15,8 @@ DetectionOverlayNode::DetectionOverlayNode(const rclcpp::NodeOptions & options)
   show_dead_zone_ = get_parameter("show_dead_zone").as_bool();
   double rate = get_parameter("publish_rate").as_double();
 
-  img_sub_.subscribe(this, "/oak/rgb/image_raw", rmw_qos_profile_default);
-  det_sub_.subscribe(this, "/oak/nn/detections", rmw_qos_profile_default);
+  img_sub_.subscribe(this, "rgb/image_raw", rmw_qos_profile_default);
+  det_sub_.subscribe(this, "nn/detections", rmw_qos_profile_default);
 
   sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
     SyncPolicy(10), img_sub_, det_sub_);

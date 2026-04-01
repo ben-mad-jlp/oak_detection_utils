@@ -73,14 +73,14 @@ DetectionCaptureNode::DetectionCaptureNode(const rclcpp::NodeOptions & options)
 
   // Always subscribe to detections
   det_sub_ = create_subscription<vision_msgs::msg::Detection2DArray>(
-    "/oak/nn/detections", 10,
+    "nn/detections", 10,
     std::bind(&DetectionCaptureNode::detection_callback, this,
       std::placeholders::_1));
 
   // Subscribe to image only if enabled
   if (enabled_) {
     img_sub_ = create_subscription<sensor_msgs::msg::Image>(
-      "/oak/rgb/image_raw", rclcpp::SensorDataQoS(),
+      "rgb/image_raw", rclcpp::SensorDataQoS(),
       std::bind(&DetectionCaptureNode::image_callback, this,
         std::placeholders::_1));
   }
@@ -511,7 +511,7 @@ void DetectionCaptureNode::enable_callback(
 
   if (enabled_ && !img_sub_) {
     img_sub_ = create_subscription<sensor_msgs::msg::Image>(
-      "/oak/rgb/image_raw", rclcpp::SensorDataQoS(),
+      "rgb/image_raw", rclcpp::SensorDataQoS(),
       std::bind(&DetectionCaptureNode::image_callback, this,
         std::placeholders::_1));
     RCLCPP_INFO(get_logger(), "Capture enabled, subscribed to image topic");

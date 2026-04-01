@@ -102,7 +102,13 @@ def launch_setup(context, *args, **kwargs):
         }.items(),
     )
 
-    # Load bridge and overlay nodes into the driver's container
+    # Load bridge and overlay nodes into the driver's container.
+    #
+    # All nodes use relative topic names (no leading /) so they compose correctly
+    # with PushRosNamespace in a parent launch. Remapping targets are also relative:
+    # "{camera_name}/nn/detections" resolves from each node's namespace, which equals
+    # the pushed namespace (NOT the private node path). This correctly reaches the
+    # driver's published topic at {pushed_ns}/{camera_name}/nn/detections.
     container_name = f"{camera_name}_container"
     load_nodes = LoadComposableNodes(
         target_container=container_name,
@@ -116,14 +122,13 @@ def launch_setup(context, *args, **kwargs):
                     "input_size": input_size,
                 }],
                 remappings=[
-                    ("/oak/nn/detections", f"/{camera_name}/nn/detections"),
+                    ("nn/detections", f"{camera_name}/nn/detections"),
                 ],
             ),
             ComposableNode(
                 package="oak_detection_utils",
                 plugin="oak_detection_utils::DetectionOverlayNode",
-                name="detection_overlay",
-                namespace=f"{camera_name}_bridge",
+                name=f"{camera_name}_overlay",
                 parameters=[{
                     "label_map": label_map,
                     "input_size": input_size,
@@ -131,15 +136,14 @@ def launch_setup(context, *args, **kwargs):
                     "show_dead_zone": True,
                 }],
                 remappings=[
-                    ("/oak/rgb/image_raw", f"/{camera_name}/rgb/image_raw"),
-                    ("/oak/nn/detections", f"/{camera_name}/nn/detections"),
+                    ("rgb/image_raw", f"{camera_name}/rgb/image_raw"),
+                    ("nn/detections", f"{camera_name}/nn/detections"),
                 ],
             ),
             ComposableNode(
                 package="oak_detection_utils",
                 plugin="oak_detection_utils::DetectionCaptureNode",
-                name="capture",
-                namespace=f"{camera_name}_bridge",
+                name=f"{camera_name}_capture",
                 parameters=[{
                     "label_map": label_map,
                     "camera_name": camera_name,
@@ -149,8 +153,8 @@ def launch_setup(context, *args, **kwargs):
                     "periodic_interval": capture_rate,
                 }],
                 remappings=[
-                    ("/oak/rgb/image_raw", f"/{camera_name}/rgb/image_raw"),
-                    ("/oak/nn/detections", f"/{camera_name}/nn/detections"),
+                    ("rgb/image_raw", f"{camera_name}/rgb/image_raw"),
+                    ("nn/detections", f"{camera_name}/nn/detections"),
                 ],
             ),
         ],
@@ -164,7 +168,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "name",
             default_value="oak",
-            description="Camera node name (used for topic namespace)",
+            description="Camera node name (alphanumeric + underscores only)",
         ),
         DeclareLaunchArgument(
             "nn_package",

@@ -16,7 +16,7 @@ DetectionBridgeNode::DetectionBridgeNode(const rclcpp::NodeOptions & options)
   confidence_threshold_ = get_parameter("confidence_threshold").as_double();
 
   sub_ = create_subscription<vision_msgs::msg::Detection2DArray>(
-    "/oak/nn/detections", 10,
+    "nn/detections", 10,
     std::bind(&DetectionBridgeNode::detection_callback, this, std::placeholders::_1));
 
   pub_ = create_publisher<depthai_yolo_msgs::msg::BoundingBoxes>(
