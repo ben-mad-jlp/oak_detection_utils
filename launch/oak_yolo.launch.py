@@ -1,5 +1,7 @@
+import io
 import json
 import os
+import tarfile
 import tempfile
 
 import yaml
@@ -24,37 +26,29 @@ def launch_setup(context, *args, **kwargs):
 
     if nn_package:
         base_dir = get_package_share_directory(nn_package)
-        nn_config_path = os.path.join(base_dir, nn_config + ".json")
         archive_path = os.path.join(base_dir, nn_config + ".tar.xz")
     else:
-        nn_config_path = nn_config + ".json"
-        archive_path = os.path.splitext(nn_config)[0] + ".tar.xz"
+        archive_path = nn_config + ".tar.xz"
 
-    # Read label_map and input_size from the NN JSON config (v3 NNArchive format)
-    with open(nn_config_path) as f:
-        nn_json = json.load(f)
+    # Read label_map and input_size from config.json inside the NNArchive (.tar.xz)
+    with tarfile.open(archive_path, "r:xz") as tar:
+        config_member = tar.getmember("config.json")
+        with tar.extractfile(config_member) as f:
+            nn_json = json.load(io.TextIOWrapper(f))
 
-    # Support both v3 NNArchive config and legacy v2 config formats
-    if "config_version" in nn_json:
-        # v3 NNArchive config.json format
-        model = nn_json.get("model", {})
-        heads = model.get("heads", [{}])
-        label_map = heads[0].get("metadata", {}).get("classes", []) if heads else []
-        inputs = model.get("inputs", [{}])
-        shape = inputs[0].get("shape", [1, 3, 416, 416]) if inputs else [1, 3, 416, 416]
-        input_size = shape[2]  # NCHW format
-        nn_model_path = archive_path
-    else:
-        # Legacy v2 config format
-        label_map = nn_json.get("mappings", {}).get("labels", [])
-        nn_model_path = nn_json.get("model", {}).get("model_name", "")
-        # Resolve relative blob names relative to the config JSON location
-        if nn_model_path and not os.path.isabs(nn_model_path):
-            nn_model_path = os.path.join(os.path.dirname(nn_config_path), nn_model_path)
-        input_size = 416
-        input_size_str = nn_json.get("nn_config", {}).get("input_size", "416x416")
-        if "x" in input_size_str:
-            input_size = int(input_size_str.split("x")[0])
+    if "config_version" not in nn_json:
+        raise RuntimeError(
+            f"{archive_path} does not contain a v3 NNArchive config.json "
+            "(missing 'config_version' key)"
+        )
+
+    model = nn_json.get("model", {})
+    heads = model.get("heads", [{}])
+    label_map = heads[0].get("metadata", {}).get("classes", []) if heads else []
+    inputs = model.get("inputs", [{}])
+    shape = inputs[0].get("shape", [1, 3, 416, 416]) if inputs else [1, 3, 416, 416]
+    input_size = shape[2]  # NCHW format
+    nn_model_path = archive_path
 
     # Generate camera params YAML with runtime values (v3 driver format)
     camera_params = {
