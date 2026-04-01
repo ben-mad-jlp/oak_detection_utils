@@ -20,6 +20,7 @@ def launch_setup(context, *args, **kwargs):
     mx_id = LaunchConfiguration("mx_id").perform(context)
     capture_rate = float(LaunchConfiguration("capture_rate").perform(context))
     session_name = LaunchConfiguration("session_name").perform(context)
+    namespace = LaunchConfiguration("namespace").perform(context)
 
     if nn_package:
         base_dir = get_package_share_directory(nn_package)
@@ -95,6 +96,7 @@ def launch_setup(context, *args, **kwargs):
         ),
         launch_arguments={
             "name": camera_name,
+            "namespace": namespace,
             "params_file": params_path,
             "camera_model": "OAK-D-LITE",
             "pointcloud.enable": "false",
@@ -104,19 +106,20 @@ def launch_setup(context, *args, **kwargs):
 
     # Load bridge and overlay nodes into the driver's container.
     #
-    # All nodes use relative topic names (no leading /) so they compose correctly
-    # with PushRosNamespace in a parent launch. Remapping targets are also relative:
-    # "{camera_name}/nn/detections" resolves from each node's namespace, which equals
-    # the pushed namespace (NOT the private node path). This correctly reaches the
-    # driver's published topic at {pushed_ns}/{camera_name}/nn/detections.
+    # The container is created by driver.launch.py at /{namespace}/{camera_name}_container.
+    # We must use the absolute path here because there is no PushRosNamespace context
+    # to resolve a relative name — a relative name would look for /{camera_name}_container
+    # at the global root and fail to find the container.
     container_name = f"{camera_name}_container"
+    abs_container = f"/{namespace}/{container_name}" if namespace else f"/{container_name}"
     load_nodes = LoadComposableNodes(
-        target_container=container_name,
+        target_container=abs_container,
         composable_node_descriptions=[
             ComposableNode(
                 package="oak_detection_utils",
                 plugin="oak_detection_utils::DetectionBridgeNode",
                 name=f"{camera_name}_bridge",
+                namespace=namespace,
                 parameters=[{
                     "label_map": label_map,
                     "input_size": input_size,
@@ -129,6 +132,7 @@ def launch_setup(context, *args, **kwargs):
                 package="oak_detection_utils",
                 plugin="oak_detection_utils::DetectionOverlayNode",
                 name=f"{camera_name}_overlay",
+                namespace=namespace,
                 parameters=[{
                     "label_map": label_map,
                     "input_size": input_size,
@@ -144,6 +148,7 @@ def launch_setup(context, *args, **kwargs):
                 package="oak_detection_utils",
                 plugin="oak_detection_utils::DetectionCaptureNode",
                 name=f"{camera_name}_capture",
+                namespace=namespace,
                 parameters=[{
                     "label_map": label_map,
                     "camera_name": camera_name,
@@ -188,6 +193,12 @@ def generate_launch_description():
             "capture_rate",
             default_value="30.0",
             description="Minimum interval (seconds) between image captures",
+        ),
+        DeclareLaunchArgument(
+            "namespace",
+            default_value="",
+            description="ROS namespace for the driver and composable nodes. "
+                        "Pass explicitly to prevent outer launch context from leaking in.",
         ),
         DeclareLaunchArgument(
             "session_name",
