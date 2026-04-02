@@ -14,12 +14,22 @@ from launch_ros.actions import LoadComposableNodes
 from launch_ros.descriptions import ComposableNode
 
 
+def _deep_merge(base, override):
+    """Recursively merge override into base dict in-place."""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+
+
 def launch_setup(context, *args, **kwargs):
     driver_dir = get_package_share_directory("depthai_ros_driver")
 
     nn_package = LaunchConfiguration("nn_package").perform(context)
     nn_config = LaunchConfiguration("nn_config").perform(context)
     mx_id = LaunchConfiguration("mx_id").perform(context)
+    params_file = LaunchConfiguration("params_file").perform(context)
     capture_rate = float(LaunchConfiguration("capture_rate").perform(context))
     session_name = LaunchConfiguration("session_name").perform(context)
     namespace = LaunchConfiguration("namespace").perform(context)
@@ -73,6 +83,20 @@ def launch_setup(context, *args, **kwargs):
             }
         }
     }
+    # Merge driver params from the instance params_file (e.g. i_device_id).
+    # Reads the section keyed by the full node path: {namespace}/{camera_name}.
+    camera_name = LaunchConfiguration("name").perform(context)
+    if params_file:
+        try:
+            with open(params_file) as f:
+                extra = yaml.safe_load(f) or {}
+            node_key = f"{namespace}/{camera_name}" if namespace else camera_name
+            node_ros_params = extra.get(node_key, {}).get("ros__parameters", {})
+            _deep_merge(camera_params["/**"]["ros__parameters"], node_ros_params)
+        except (OSError, yaml.YAMLError):
+            pass
+
+    # mx_id launch arg overrides everything if explicitly set
     if mx_id:
         camera_params["/**"]["ros__parameters"]["driver"]["i_device_id"] = mx_id
 
@@ -80,8 +104,6 @@ def launch_setup(context, *args, **kwargs):
     params_fd, params_path = tempfile.mkstemp(suffix=".yaml", prefix="oak_params_")
     with os.fdopen(params_fd, "w") as f:
         yaml.dump(camera_params, f, default_flow_style=False)
-
-    camera_name = LaunchConfiguration("name").perform(context)
 
     # Include the official depthai_ros_driver v3 launch
     driver_launch = IncludeLaunchDescription(
@@ -181,7 +203,13 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "mx_id",
             default_value="",
-            description="MyriadX device ID (empty for first available)",
+            description="MyriadX device ID. Overrides params_file if set.",
+        ),
+        DeclareLaunchArgument(
+            "params_file",
+            default_value="",
+            description="Instance params YAML. Driver params are read from the "
+                        "{namespace}/{name} section. mx_id arg takes precedence if set.",
         ),
         DeclareLaunchArgument(
             "capture_rate",
