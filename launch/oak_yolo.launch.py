@@ -92,7 +92,7 @@ def launch_setup(context, *args, **kwargs):
             "name": camera_name,
             "namespace": namespace,
             "params_file": params_path,
-            "camera_model": "OAK-D-LITE",
+            "camera_model": "OAK-1",
             "pointcloud.enable": "false",
             "use_rviz": "false",
         }.items(),
