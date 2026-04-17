@@ -132,6 +132,17 @@ def launch_setup(context, *args, **kwargs):
         target_container=abs_container,
         composable_node_descriptions=[
             ComposableNode(
+                package="image_proc",
+                plugin="image_proc::RectifyNode",
+                name=f"{camera_name}_rectify",
+                namespace=namespace,
+                remappings=[
+                    ("image", f"{camera_name}/rgb/image_raw"),
+                    ("camera_info", f"{camera_name}/rgb/camera_info"),
+                    ("image_rect", f"{camera_name}/rgb/image_rect"),
+                ],
+            ),
+            ComposableNode(
                 package="oak_detection_utils",
                 plugin="oak_detection_utils::DetectionBridgeNode",
                 name=f"{camera_name}_bridge",
