@@ -33,7 +33,6 @@ def launch_setup(context, *args, **kwargs):
     capture_rate = float(LaunchConfiguration("capture_rate").perform(context))
     session_name = LaunchConfiguration("session_name").perform(context)
     namespace = LaunchConfiguration("namespace").perform(context)
-    tf_prefix = LaunchConfiguration("tf_prefix").perform(context)
 
     if nn_package:
         base_dir = get_package_share_directory(nn_package)
@@ -114,7 +113,6 @@ def launch_setup(context, *args, **kwargs):
         launch_arguments={
             "name": camera_name,
             "namespace": namespace,
-            "tf_prefix": tf_prefix or camera_name,
             "params_file": params_path,
             "camera_model": "OAK-1",
             "pointcloud.enable": "false",
@@ -191,8 +189,21 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "name",
             default_value="oak",
-            description="Camera node name (alphanumeric + underscores only)",
+            description="Camera node name (alphanumeric + underscores only). "
+                        "MUST be unique across all cameras in the ROS graph "
+                        "even if they live in different namespaces — see warning below.",
         ),
+        # ──────────────────────────────────────────────────────────────────────
+        # DO NOT try to give two cameras the same `name` (e.g. "cam") under
+        # different namespaces hoping for a cleaner topology. The depthai
+        # stack uses the camera node name as the prefix for all sub-sensor
+        # tf frames (cam_rgb_camera_frame, cam_imu_frame, cam_*_optical_frame)
+        # via depthai_bridge::TFPublisher. Two cameras with the same node
+        # name will publish colliding /tf_static frames and one will
+        # silently overwrite the other. We tried adding a `tf_prefix` knob
+        # to decouple them; it doesn't work because the C++ side ignores it
+        # for sub-sensor frames. Just give each camera a unique name.
+        # ──────────────────────────────────────────────────────────────────────
         DeclareLaunchArgument(
             "nn_package",
             default_value="",
@@ -217,14 +228,6 @@ def generate_launch_description():
             "capture_rate",
             default_value="30.0",
             description="Minimum interval (seconds) between image captures",
-        ),
-        DeclareLaunchArgument(
-            "tf_prefix",
-            default_value="",
-            description="TF frame prefix and base frame for the camera. "
-                        "Defaults to the node 'name' if empty. Set to a unique value "
-                        "when running multiple cameras with the same node name in "
-                        "different namespaces.",
         ),
         DeclareLaunchArgument(
             "namespace",
