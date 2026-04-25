@@ -33,6 +33,7 @@ def launch_setup(context, *args, **kwargs):
     capture_rate = float(LaunchConfiguration("capture_rate").perform(context))
     session_name = LaunchConfiguration("session_name").perform(context)
     namespace = LaunchConfiguration("namespace").perform(context)
+    tf_prefix = LaunchConfiguration("tf_prefix").perform(context)
 
     if nn_package:
         base_dir = get_package_share_directory(nn_package)
@@ -113,6 +114,7 @@ def launch_setup(context, *args, **kwargs):
         launch_arguments={
             "name": camera_name,
             "namespace": namespace,
+            "tf_prefix": tf_prefix or camera_name,
             "params_file": params_path,
             "camera_model": "OAK-1",
             "pointcloud.enable": "false",
@@ -215,6 +217,14 @@ def generate_launch_description():
             "capture_rate",
             default_value="30.0",
             description="Minimum interval (seconds) between image captures",
+        ),
+        DeclareLaunchArgument(
+            "tf_prefix",
+            default_value="",
+            description="TF frame prefix and base frame for the camera. "
+                        "Defaults to the node 'name' if empty. Set to a unique value "
+                        "when running multiple cameras with the same node name in "
+                        "different namespaces.",
         ),
         DeclareLaunchArgument(
             "namespace",
