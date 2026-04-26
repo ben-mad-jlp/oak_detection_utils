@@ -41,9 +41,14 @@ def launch_setup(context, *args, **kwargs):
     # dynamic_tf_publisher driven by an apriltag-localize service). To pin a
     # camera at a known static pose instead, override parent_frame and the
     # cam_pos_*/cam_* args here at launch.
-    parent_frame = LaunchConfiguration(
-        "parent_frame", default=f"{camera_name}_mount"
-    ).perform(context)
+    # NOTE: cannot use LaunchConfiguration(..., default=...) here — the
+    # DeclareLaunchArgument below sets default_value="" and that wins over
+    # the kwarg, so the kwarg never fires. Resolve the {name}_mount default
+    # explicitly when the launch arg is empty.
+    parent_frame = (
+        LaunchConfiguration("parent_frame").perform(context)
+        or f"{camera_name}_mount"
+    )
     cam_pos_x = LaunchConfiguration("cam_pos_x").perform(context)
     cam_pos_y = LaunchConfiguration("cam_pos_y").perform(context)
     cam_pos_z = LaunchConfiguration("cam_pos_z").perform(context)
