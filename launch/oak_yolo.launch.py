@@ -7,7 +7,7 @@ import tempfile
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import LoadComposableNodes
@@ -209,7 +209,13 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
-    return [driver_launch, load_nodes]
+    # Wrap in a scoped GroupAction so the inner driver.launch.py's
+    # launch_arguments (parent_frame, cam_pos_*, cam_*, etc.) don't leak into
+    # the parent launch context. Without this, when oak_yolo is included twice
+    # (e.g. for two cameras), the second invocation reads launch arg values
+    # left behind by the first invocation's inner driver.launch.py call,
+    # silently cross-contaminating per-camera defaults.
+    return [GroupAction([driver_launch, load_nodes], scoped=True)]
 
 
 def generate_launch_description():
