@@ -33,6 +33,23 @@ def launch_setup(context, *args, **kwargs):
     capture_rate = float(LaunchConfiguration("capture_rate").perform(context))
     session_name = LaunchConfiguration("session_name").perform(context)
     namespace = LaunchConfiguration("namespace").perform(context)
+    camera_name = LaunchConfiguration("name").perform(context)
+
+    # Per-camera "mount" anchor frame: the rsp publishes a static identity
+    # transform from <name>_mount → <name> (camera body). To localize a camera,
+    # publish <scene_frame> → <name>_mount dynamically (e.g. via
+    # dynamic_tf_publisher driven by an apriltag-localize service). To pin a
+    # camera at a known static pose instead, override parent_frame and the
+    # cam_pos_*/cam_* args here at launch.
+    parent_frame = LaunchConfiguration(
+        "parent_frame", default=f"{camera_name}_mount"
+    ).perform(context)
+    cam_pos_x = LaunchConfiguration("cam_pos_x").perform(context)
+    cam_pos_y = LaunchConfiguration("cam_pos_y").perform(context)
+    cam_pos_z = LaunchConfiguration("cam_pos_z").perform(context)
+    cam_roll = LaunchConfiguration("cam_roll").perform(context)
+    cam_pitch = LaunchConfiguration("cam_pitch").perform(context)
+    cam_yaw = LaunchConfiguration("cam_yaw").perform(context)
 
     if nn_package:
         base_dir = get_package_share_directory(nn_package)
@@ -85,7 +102,6 @@ def launch_setup(context, *args, **kwargs):
     }
     # Merge driver params from the instance params_file (e.g. i_device_id).
     # Reads the section keyed by the full node path: {namespace}/{camera_name}.
-    camera_name = LaunchConfiguration("name").perform(context)
     if params_file:
         try:
             with open(params_file) as f:
@@ -117,6 +133,13 @@ def launch_setup(context, *args, **kwargs):
             "camera_model": "OAK-1",
             "pointcloud.enable": "false",
             "use_rviz": "false",
+            "parent_frame": parent_frame,
+            "cam_pos_x": cam_pos_x,
+            "cam_pos_y": cam_pos_y,
+            "cam_pos_z": cam_pos_z,
+            "cam_roll": cam_roll,
+            "cam_pitch": cam_pitch,
+            "cam_yaw": cam_yaw,
         }.items(),
     )
 
@@ -240,5 +263,31 @@ def generate_launch_description():
             default_value="default",
             description="Capture session name (images saved to ~/capture/{session_name}/{camera}/)",
         ),
+        # ── Camera mount / pose ────────────────────────────────────────────────
+        # By default we anchor the camera body to a per-camera "mount" frame
+        # ({name}_mount) at identity, so a separate publisher (e.g. a static
+        # transform from a calibration node, or dynamic_tf_publisher updated
+        # by an apriltag-localize service) can own the {scene} → {name}_mount
+        # edge. Override these args if you'd rather pin the camera at a
+        # known static pose at launch time.
+        DeclareLaunchArgument(
+            "parent_frame",
+            default_value="",
+            description="Parent frame the camera body attaches to. "
+                        "Defaults to '{name}_mount' if empty — left for an external "
+                        "publisher (e.g. dynamic_tf_publisher) to position dynamically.",
+        ),
+        DeclareLaunchArgument("cam_pos_x", default_value="0.0",
+            description="Camera body X offset from parent_frame (meters)."),
+        DeclareLaunchArgument("cam_pos_y", default_value="0.0",
+            description="Camera body Y offset from parent_frame (meters)."),
+        DeclareLaunchArgument("cam_pos_z", default_value="0.0",
+            description="Camera body Z offset from parent_frame (meters)."),
+        DeclareLaunchArgument("cam_roll", default_value="0.0",
+            description="Camera body roll w.r.t. parent_frame (radians)."),
+        DeclareLaunchArgument("cam_pitch", default_value="0.0",
+            description="Camera body pitch w.r.t. parent_frame (radians)."),
+        DeclareLaunchArgument("cam_yaw", default_value="0.0",
+            description="Camera body yaw w.r.t. parent_frame (radians)."),
         OpaqueFunction(function=launch_setup),
     ])
