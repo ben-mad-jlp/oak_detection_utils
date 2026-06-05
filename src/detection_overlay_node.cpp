@@ -117,11 +117,17 @@ void DetectionOverlayNode::timer_callback()
       double conf = 0.0;
       if (!det.results.empty()) {
         conf = det.results[0].hypothesis.score;
-        int class_id = std::atoi(det.results[0].hypothesis.class_id.c_str());
-        if (class_id >= 0 && class_id < static_cast<int>(label_map_.size())) {
+        const std::string & class_id_str = det.results[0].hypothesis.class_id;
+        // class_id may be either a numeric index (look up in label_map) or
+        // an already-resolved class name (use verbatim). atoi-ing a string
+        // name silently returns 0, mislabeling every detection.
+        char * end = nullptr;
+        long class_id = std::strtol(class_id_str.c_str(), &end, 10);
+        bool is_numeric = !class_id_str.empty() && *end == '\0';
+        if (is_numeric && class_id >= 0 && class_id < static_cast<long>(label_map_.size())) {
           label = label_map_[class_id];
         } else {
-          label = det.results[0].hypothesis.class_id;
+          label = class_id_str;
         }
       }
       char buf[64];
