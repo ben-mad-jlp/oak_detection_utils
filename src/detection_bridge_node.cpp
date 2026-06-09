@@ -67,13 +67,20 @@ void DetectionBridgeNode::detection_callback(
       }
 
       bb.probability = prob;
-      int class_id = std::atoi(det.results[0].hypothesis.class_id.c_str());
-      if (class_id >= 0 && class_id < static_cast<int>(label_map_.size())) {
+      const std::string & class_id_str = det.results[0].hypothesis.class_id;
+      // class_id may be either a numeric index (look up in label_map) or
+      // an already-resolved class name (use verbatim). atoi-ing a string
+      // name silently returns 0, mislabeling every detection as label_map_[0].
+      char * end = nullptr;
+      long class_id = std::strtol(class_id_str.c_str(), &end, 10);
+      bool is_numeric = !class_id_str.empty() && *end == '\0';
+      if (is_numeric && class_id >= 0 && class_id < static_cast<long>(label_map_.size())) {
         bb.class_name = label_map_[class_id];
+        bb.id = static_cast<int16_t>(class_id);
       } else {
-        bb.class_name = det.results[0].hypothesis.class_id;
+        bb.class_name = class_id_str;
+        bb.id = 0;
       }
-      bb.id = static_cast<int16_t>(class_id);
     }
 
     out.bounding_boxes.push_back(bb);
