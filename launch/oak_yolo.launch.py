@@ -34,6 +34,9 @@ def launch_setup(context, *args, **kwargs):
     session_name = LaunchConfiguration("session_name").perform(context)
     namespace = LaunchConfiguration("namespace").perform(context)
     camera_name = LaunchConfiguration("name").perform(context)
+    camera_model = LaunchConfiguration("camera_model").perform(context)
+    rgb_width = int(LaunchConfiguration("rgb_width").perform(context))
+    rgb_height = int(LaunchConfiguration("rgb_height").perform(context))
 
     # Per-camera "mount" anchor frame: the rsp publishes a static identity
     # transform from <name>_mount → <name> (camera body). To localize a camera,
@@ -56,33 +59,10 @@ def launch_setup(context, *args, **kwargs):
     cam_pitch = LaunchConfiguration("cam_pitch").perform(context)
     cam_yaw = LaunchConfiguration("cam_yaw").perform(context)
 
-    if nn_package:
-        base_dir = get_package_share_directory(nn_package)
-        archive_path = os.path.join(base_dir, nn_config + ".tar.xz")
-    else:
-        archive_path = nn_config + ".tar.xz"
-
-    # Read label_map and input_size from config.json inside the NNArchive (.tar.xz)
-    with tarfile.open(archive_path, "r:xz") as tar:
-        config_member = tar.getmember("config.json")
-        with tar.extractfile(config_member) as f:
-            nn_json = json.load(io.TextIOWrapper(f))
-
-    if "config_version" not in nn_json:
-        raise RuntimeError(
-            f"{archive_path} does not contain a v3 NNArchive config.json "
-            "(missing 'config_version' key)"
-        )
-
-    model = nn_json.get("model", {})
-    heads = model.get("heads", [{}])
-    label_map = heads[0].get("metadata", {}).get("classes", []) if heads else []
-    inputs = model.get("inputs", [{}])
-    shape = inputs[0].get("shape", [1, 3, 416, 416]) if inputs else [1, 3, 416, 416]
-    input_size = shape[2]  # NCHW format
-    nn_model_path = archive_path
-
-    # Generate camera params YAML with runtime values (v3 driver format)
+    # Base RGB pipeline params, shared by the NN and camera-only paths.
+    # When nn_config is set, the NN block below overrides the RGB resolution to
+    # match the model input and enables the on-device neural network. With no
+    # nn_config, the driver runs as a plain RGB camera at rgb_width x rgb_height.
     camera_params = {
         "/**": {
             "ros__parameters": {
@@ -91,28 +71,61 @@ def launch_setup(context, *args, **kwargs):
                 },
                 "pipeline_gen": {
                     "i_pipeline_type": "RGB",
-                    "i_nn_type": "rgb",
-                },
-                "nn": {
-                    "i_nn_model": nn_model_path,
                 },
                 "rgb": {
                     "i_publish_topic": True,
                     "i_fps": 30.0,
-                    "i_width": input_size,
-                    "i_height": input_size,
+                    "i_width": rgb_width,
+                    "i_height": rgb_height,
                 },
             }
         }
     }
+
+    label_map = []
+    input_size = None
+    if nn_config:
+        if nn_package:
+            base_dir = get_package_share_directory(nn_package)
+            archive_path = os.path.join(base_dir, nn_config + ".tar.xz")
+        else:
+            archive_path = nn_config + ".tar.xz"
+
+        # Read label_map and input_size from config.json inside the NNArchive (.tar.xz)
+        with tarfile.open(archive_path, "r:xz") as tar:
+            config_member = tar.getmember("config.json")
+            with tar.extractfile(config_member) as f:
+                nn_json = json.load(io.TextIOWrapper(f))
+
+        if "config_version" not in nn_json:
+            raise RuntimeError(
+                f"{archive_path} does not contain a v3 NNArchive config.json "
+                "(missing 'config_version' key)"
+            )
+
+        model = nn_json.get("model", {})
+        heads = model.get("heads", [{}])
+        label_map = heads[0].get("metadata", {}).get("classes", []) if heads else []
+        inputs = model.get("inputs", [{}])
+        shape = inputs[0].get("shape", [1, 3, 416, 416]) if inputs else [1, 3, 416, 416]
+        input_size = shape[2]  # NCHW format
+
+        rp = camera_params["/**"]["ros__parameters"]
+        rp["pipeline_gen"]["i_nn_type"] = "rgb"
+        rp["nn"] = {"i_nn_model": archive_path}
+        rp["rgb"]["i_width"] = input_size
+        rp["rgb"]["i_height"] = input_size
     # Merge driver params from the instance params_file (e.g. i_device_id).
     # Reads the section keyed by the full node path: {namespace}/{camera_name}.
+    # Accepts the key with or without a leading slash so files can follow either
+    # convention (vision_detection.yaml omits it; ns1/params.yaml keeps it).
     if params_file:
         try:
             with open(params_file) as f:
                 extra = yaml.safe_load(f) or {}
             node_key = f"{namespace}/{camera_name}" if namespace else camera_name
-            node_ros_params = extra.get(node_key, {}).get("ros__parameters", {})
+            section = extra.get(node_key) or extra.get(f"/{node_key}") or {}
+            node_ros_params = section.get("ros__parameters", {})
             _deep_merge(camera_params["/**"]["ros__parameters"], node_ros_params)
         except (OSError, yaml.YAMLError):
             pass
@@ -135,7 +148,7 @@ def launch_setup(context, *args, **kwargs):
             "name": camera_name,
             "namespace": namespace,
             "params_file": params_path,
-            "camera_model": "OAK-1",
+            "camera_model": camera_model,
             "pointcloud.enable": "false",
             "use_rviz": "false",
             "parent_frame": parent_frame,
@@ -149,6 +162,9 @@ def launch_setup(context, *args, **kwargs):
     )
 
     # Load bridge and overlay nodes into the driver's container.
+    # These are all NN-dependent (they consume nn/detections and the model's
+    # label_map), so they are only loaded when an NN is configured. With no NN,
+    # the driver runs as a plain RGB camera and none of these are added.
     #
     # The container is created by driver.launch.py at /{namespace}/{camera_name}_container.
     # We must use the absolute path here because there is no PushRosNamespace context
@@ -215,7 +231,10 @@ def launch_setup(context, *args, **kwargs):
     # (e.g. for two cameras), the second invocation reads launch arg values
     # left behind by the first invocation's inner driver.launch.py call,
     # silently cross-contaminating per-camera defaults.
-    return [GroupAction([driver_launch, load_nodes], scoped=True)]
+    inner_actions = [driver_launch]
+    if nn_config:
+        inner_actions.append(load_nodes)
+    return [GroupAction(inner_actions, scoped=True)]
 
 
 def generate_launch_description():
@@ -245,7 +264,24 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "nn_config",
-            description="NN config path stem (no extension). Relative to nn_package share dir if nn_package is set, otherwise absolute.",
+            default_value="",
+            description="NN config path stem (no extension). Relative to nn_package share dir if nn_package is set, otherwise absolute. "
+                        "Leave empty to run the OAK as a plain RGB camera with no neural network (no bridge/overlay/capture nodes).",
+        ),
+        DeclareLaunchArgument(
+            "camera_model",
+            default_value="OAK-1",
+            description="DepthAI camera model passed to the driver (e.g. OAK-1, OAK-D-PRO).",
+        ),
+        DeclareLaunchArgument(
+            "rgb_width",
+            default_value="1280",
+            description="RGB stream width (pixels) for the camera-only path. Ignored when nn_config is set — the NN input size wins.",
+        ),
+        DeclareLaunchArgument(
+            "rgb_height",
+            default_value="720",
+            description="RGB stream height (pixels) for the camera-only path. Ignored when nn_config is set — the NN input size wins.",
         ),
         DeclareLaunchArgument(
             "mx_id",
