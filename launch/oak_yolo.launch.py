@@ -161,69 +161,74 @@ def launch_setup(context, *args, **kwargs):
         }.items(),
     )
 
+    inner_actions = [driver_launch]
+
     # Load bridge and overlay nodes into the driver's container.
     # These are all NN-dependent (they consume nn/detections and the model's
-    # label_map), so they are only loaded when an NN is configured. With no NN,
-    # the driver runs as a plain RGB camera and none of these are added.
+    # label_map, and input_size comes from the NN archive), so they are only
+    # built and loaded when an NN is configured. With no NN, input_size is None
+    # and constructing these ComposableNodes would fail parameter validation —
+    # so the camera-only path skips them entirely.
     #
     # The container is created by driver.launch.py at /{namespace}/{camera_name}_container.
     # We must use the absolute path here because there is no PushRosNamespace context
     # to resolve a relative name — a relative name would look for /{camera_name}_container
     # at the global root and fail to find the container.
-    container_name = f"{camera_name}_container"
-    abs_container = f"/{namespace}/{container_name}" if namespace else f"/{container_name}"
-    load_nodes = LoadComposableNodes(
-        target_container=abs_container,
-        composable_node_descriptions=[
-            ComposableNode(
-                package="oak_detection_utils",
-                plugin="oak_detection_utils::DetectionBridgeNode",
-                name=f"{camera_name}_bridge",
-                namespace=namespace,
-                parameters=[{
-                    "label_map": label_map,
-                    "input_size": input_size,
-                }],
-                remappings=[
-                    ("nn/detections", f"{camera_name}/nn/detections"),
-                ],
-            ),
-            ComposableNode(
-                package="oak_detection_utils",
-                plugin="oak_detection_utils::DetectionOverlayNode",
-                name=f"{camera_name}_overlay",
-                namespace=namespace,
-                parameters=[{
-                    "label_map": label_map,
-                    "input_size": input_size,
-                    "publish_rate": 5.0,
-                    "show_dead_zone": True,
-                }],
-                remappings=[
-                    ("rgb/image_raw", f"{camera_name}/rgb/image_raw"),
-                    ("nn/detections", f"{camera_name}/nn/detections"),
-                ],
-            ),
-            ComposableNode(
-                package="oak_detection_utils",
-                plugin="oak_detection_utils::DetectionCaptureNode",
-                name=f"{camera_name}_capture",
-                namespace=namespace,
-                parameters=[{
-                    "label_map": label_map,
-                    "camera_name": camera_name,
-                    "session_name": session_name,
-                    "enabled": True,
-                    "min_save_interval": capture_rate,
-                    "periodic_interval": capture_rate,
-                }],
-                remappings=[
-                    ("rgb/image_raw", f"{camera_name}/rgb/image_raw"),
-                    ("nn/detections", f"{camera_name}/nn/detections"),
-                ],
-            ),
-        ],
-    )
+    if nn_config:
+        container_name = f"{camera_name}_container"
+        abs_container = f"/{namespace}/{container_name}" if namespace else f"/{container_name}"
+        inner_actions.append(LoadComposableNodes(
+            target_container=abs_container,
+            composable_node_descriptions=[
+                ComposableNode(
+                    package="oak_detection_utils",
+                    plugin="oak_detection_utils::DetectionBridgeNode",
+                    name=f"{camera_name}_bridge",
+                    namespace=namespace,
+                    parameters=[{
+                        "label_map": label_map,
+                        "input_size": input_size,
+                    }],
+                    remappings=[
+                        ("nn/detections", f"{camera_name}/nn/detections"),
+                    ],
+                ),
+                ComposableNode(
+                    package="oak_detection_utils",
+                    plugin="oak_detection_utils::DetectionOverlayNode",
+                    name=f"{camera_name}_overlay",
+                    namespace=namespace,
+                    parameters=[{
+                        "label_map": label_map,
+                        "input_size": input_size,
+                        "publish_rate": 5.0,
+                        "show_dead_zone": True,
+                    }],
+                    remappings=[
+                        ("rgb/image_raw", f"{camera_name}/rgb/image_raw"),
+                        ("nn/detections", f"{camera_name}/nn/detections"),
+                    ],
+                ),
+                ComposableNode(
+                    package="oak_detection_utils",
+                    plugin="oak_detection_utils::DetectionCaptureNode",
+                    name=f"{camera_name}_capture",
+                    namespace=namespace,
+                    parameters=[{
+                        "label_map": label_map,
+                        "camera_name": camera_name,
+                        "session_name": session_name,
+                        "enabled": True,
+                        "min_save_interval": capture_rate,
+                        "periodic_interval": capture_rate,
+                    }],
+                    remappings=[
+                        ("rgb/image_raw", f"{camera_name}/rgb/image_raw"),
+                        ("nn/detections", f"{camera_name}/nn/detections"),
+                    ],
+                ),
+            ],
+        ))
 
     # Wrap in a scoped GroupAction so the inner driver.launch.py's
     # launch_arguments (parent_frame, cam_pos_*, cam_*, etc.) don't leak into
@@ -231,9 +236,6 @@ def launch_setup(context, *args, **kwargs):
     # (e.g. for two cameras), the second invocation reads launch arg values
     # left behind by the first invocation's inner driver.launch.py call,
     # silently cross-contaminating per-camera defaults.
-    inner_actions = [driver_launch]
-    if nn_config:
-        inner_actions.append(load_nodes)
     return [GroupAction(inner_actions, scoped=True)]
 
 
