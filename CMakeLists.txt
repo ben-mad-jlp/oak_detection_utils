@@ -6,6 +6,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(vision_msgs REQUIRED)
@@ -67,5 +68,9 @@ install(DIRECTORY config/
 
 install(DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch)
+
+# NN archive metadata reader, imported by this package's and other packages'
+# launch files so the model's input size has exactly one source of truth.
+ament_python_install_package(${PROJECT_NAME})
 
 ament_package()

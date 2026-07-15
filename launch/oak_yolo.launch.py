@@ -1,9 +1,7 @@
-import io
-import json
 import os
-import tarfile
 import tempfile
 
+import launch.logging
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -13,6 +11,8 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import LoadComposableNodes
 from launch_ros.descriptions import ComposableNode
 
+from oak_detection_utils.nn_archive import read_nn_archive
+
 
 def _deep_merge(base, override):
     """Recursively merge override into base dict in-place."""
@@ -21,6 +21,37 @@ def _deep_merge(base, override):
             _deep_merge(base[key], value)
         else:
             base[key] = value
+
+
+def _report_nn_framing(camera_name, input_size, rgb_width, rgb_height):
+    """Surface how the NN frames the scene relative to the published stream.
+
+    The NN samples the sensor itself, aspect-preserving, so it sees only the centered
+    square of the field of view. Whenever the published stream is not square, the two
+    disagree — and detections are reported in NN pixel space, not published-image
+    space. That mismatch is invisible until someone maps a box onto the image, so say
+    it out loud at launch.
+    """
+    logger = launch.logging.get_logger("oak_yolo")
+
+    if min(rgb_width, rgb_height) < input_size:
+        logger.warning(
+            f"{camera_name}: published rgb is {rgb_width}x{rgb_height}, smaller than the "
+            f"NN input {input_size}x{input_size}. The NN samples the sensor directly so its "
+            f"accuracy is unaffected, but the published image is coarser than what the NN "
+            f"sees — anything doing sub-pixel work on it is needlessly handicapped."
+        )
+
+    if rgb_width != rgb_height:
+        nn_region = min(rgb_width, rgb_height)
+        dead_zone = (max(rgb_width, rgb_height) - nn_region) // 2
+        logger.info(
+            f"{camera_name}: NN sees only the centered {nn_region}x{nn_region} square of the "
+            f"{rgb_width}x{rgb_height} frame ({dead_zone} px dead zone per side). Detections "
+            f"are in {input_size}x{input_size} NN space — map them onto the image through "
+            f"that center crop (scale by {nn_region}/{input_size}, then offset), never by "
+            f"stretching each axis independently."
+        )
 
 
 def launch_setup(context, *args, **kwargs):
@@ -59,10 +90,11 @@ def launch_setup(context, *args, **kwargs):
     cam_pitch = LaunchConfiguration("cam_pitch").perform(context)
     cam_yaw = LaunchConfiguration("cam_yaw").perform(context)
 
-    # Base RGB pipeline params, shared by the NN and camera-only paths.
-    # When nn_config is set, the NN block below overrides the RGB resolution to
-    # match the model input and enables the on-device neural network. With no
-    # nn_config, the driver runs as a plain RGB camera at rgb_width x rgb_height.
+    # Base RGB pipeline params. rgb_width/rgb_height size the PUBLISHED stream, and
+    # nothing else — the NN does not consume it. In depthai v3 the neural network
+    # requests its own branch straight off the sensor at the model's input size, so
+    # published resolution and NN input are independent and are tuned separately.
+    # (v2's "preview" — where the published stream really was the NN input — is gone.)
     camera_params = {
         "/**": {
             "ros__parameters": {
@@ -91,30 +123,13 @@ def launch_setup(context, *args, **kwargs):
         else:
             archive_path = nn_config + ".tar.xz"
 
-        # Read label_map and input_size from config.json inside the NNArchive (.tar.xz)
-        with tarfile.open(archive_path, "r:xz") as tar:
-            config_member = tar.getmember("config.json")
-            with tar.extractfile(config_member) as f:
-                nn_json = json.load(io.TextIOWrapper(f))
-
-        if "config_version" not in nn_json:
-            raise RuntimeError(
-                f"{archive_path} does not contain a v3 NNArchive config.json "
-                "(missing 'config_version' key)"
-            )
-
-        model = nn_json.get("model", {})
-        heads = model.get("heads", [{}])
-        label_map = heads[0].get("metadata", {}).get("classes", []) if heads else []
-        inputs = model.get("inputs", [{}])
-        shape = inputs[0].get("shape", [1, 3, 416, 416]) if inputs else [1, 3, 416, 416]
-        input_size = shape[2]  # NCHW format
+        label_map, input_size = read_nn_archive(archive_path)
 
         rp = camera_params["/**"]["ros__parameters"]
         rp["pipeline_gen"]["i_nn_type"] = "rgb"
         rp["nn"] = {"i_nn_model": archive_path}
-        rp["rgb"]["i_width"] = input_size
-        rp["rgb"]["i_height"] = input_size
+
+        _report_nn_framing(camera_name, input_size, rgb_width, rgb_height)
     # Merge driver params from the instance params_file (e.g. i_device_id).
     # Reads the section keyed by the full node path: {namespace}/{camera_name}.
     # Accepts the key with or without a leading slash so files can follow either
@@ -278,12 +293,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "rgb_width",
             default_value="1280",
-            description="RGB stream width (pixels) for the camera-only path. Ignored when nn_config is set — the NN input size wins.",
+            description="Published RGB stream width (pixels). Independent of the NN, which "
+                        "samples the sensor on its own branch at the model's input size. "
+                        "A non-square stream means the NN sees only its centered square.",
         ),
         DeclareLaunchArgument(
             "rgb_height",
             default_value="720",
-            description="RGB stream height (pixels) for the camera-only path. Ignored when nn_config is set — the NN input size wins.",
+            description="Published RGB stream height (pixels). See rgb_width.",
         ),
         DeclareLaunchArgument(
             "mx_id",
